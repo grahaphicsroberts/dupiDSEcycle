@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cyclical Disease Activity Prototype</title>
+    <title>Cyclical Disease Activity: Slow Organic View</title>
     <style>
         body {
             display: flex;
@@ -21,7 +21,7 @@
 </head>
 <body>
 
-<canvas id="radialChart" width="600" height="600"></canvas>
+<canvas id="radialChart" width="650" height="650"></canvas>
 
 <script>
     const canvas = document.getElementById('radialChart');
@@ -33,28 +33,40 @@
     const centerY = height / 2;
     
     // Chart configurations
-    const minRadius = 40;  // Baseline (Center)
-    const maxRadius = 260; // Max Flare (Outer edge)
-    const historyLength = 600; // Trail lasts 3 times as long
+    const minRadius = 40;  
+    const maxRadius = 240; 
     
-    // Animation state
-    let angle = 0;
-    const angleStep = 0.04; // Line goes twice as fast
+    // Doubled history length to match the slower speed (keeps trail ~1 year long)
+    const historyLength = 840; 
+    
+    // Animation & Time state
+    let angle = -Math.PI / 2; 
+    
+    // Halved the speed again for a much slower, deliberate draw
+    const angleStep = 0.0075; 
+    
     let currentRadius = minRadius;
-    let targetRadius = minRadius;
     let pathHistory = [];
 
-    // Draw the background structural rings
+    // Organic State Machine
+    let isFlaring = false;
+    let ticksInCurrentState = 0;
+    let totalTicksForState = 0;
+    let peakRadius = minRadius;
+    
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
     function drawBackground() {
         ctx.clearRect(0, 0, width, height);
         
         const zones = [
-            { r: 260, label: 'Severe Flare' },
-            { r: 180, label: 'Moderate' },
+            { r: 240, label: 'Severe Flare' },
+            { r: 170, label: 'Moderate' },
             { r: 100, label: 'Mild' },
             { r: 40,  label: 'Baseline' }
         ];
 
+        // Draw structural rings
         zones.forEach(zone => {
             ctx.beginPath();
             ctx.arc(centerX, centerY, zone.r, 0, Math.PI * 2);
@@ -62,51 +74,90 @@
             ctx.lineWidth = 1;
             ctx.stroke();
             
-            // Subtle white labels to match the lines
             ctx.fillStyle = '#ffffff'; 
             ctx.font = '12px sans-serif';
             ctx.textAlign = 'center';
             ctx.fillText(zone.label, centerX, centerY - zone.r + 15);
         });
+
+        // Draw Month Calendar Labels around the perimeter
+        ctx.fillStyle = '#7a9e8c'; 
+        ctx.font = 'bold 14px sans-serif';
+        ctx.textBaseline = 'middle';
+        
+        for (let i = 0; i < 12; i++) {
+            const monthAngle = (i / 12) * Math.PI * 2 - Math.PI / 2;
+            const labelRadius = maxRadius + 25;
+            const x = centerX + labelRadius * Math.cos(monthAngle);
+            const y = centerY + labelRadius * Math.sin(monthAngle);
+            
+            ctx.fillText(months[i], x, y);
+
+            // Add small tick marks for the months
+            const tickStartX = centerX + maxRadius * Math.cos(monthAngle);
+            const tickStartY = centerY + maxRadius * Math.sin(monthAngle);
+            const tickEndX = centerX + (maxRadius + 10) * Math.cos(monthAngle);
+            const tickEndY = centerY + (maxRadius + 10) * Math.sin(monthAngle);
+
+            ctx.beginPath();
+            ctx.moveTo(tickStartX, tickStartY);
+            ctx.lineTo(tickEndX, tickEndY);
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
     }
 
-    // Determine the color based on how far out the line is (severity)
     function getColorForRadius(r) {
-        // Normalize radius between 0 and 1
-        const normalized = (r - minRadius) / (maxRadius - minRadius);
-        // Map to Hue: 120 (Green) to 0 (Red)
-        const hue = (1 - normalized) * 120; 
-        return `hsl(${hue}, 90%, 50%)`;
+        const normalized = Math.max(0, Math.min(1, (r - minRadius) / (maxRadius - minRadius)));
+        const hue = (1 - normalized) * 60; 
+        return `hsl(${hue}, 100%, 50%)`;
     }
 
-    // Main animation loop
-    function animate() {
-        drawBackground();
-
-        // 1. Randomly decide to shift towards a flare or recovery
-        if (Math.random() < 0.02) { 
-            // 30% chance to target baseline, 70% chance to target a random flare severity
-            if (Math.random() < 0.3) {
-                targetRadius = minRadius + (Math.random() * 20); 
+    function updateLogic() {
+        if (ticksInCurrentState >= totalTicksForState) {
+            isFlaring = !isFlaring;
+            ticksInCurrentState = 0;
+            
+            if (isFlaring) {
+                // Scaled durations up by 2x to match the halved speed. 
+                // This ensures flares take up the same physical width on the circle.
+                totalTicksForState = 30 + (Math.random() * 100);
+                peakRadius = minRadius + 60 + (Math.random() * (maxRadius - minRadius - 60));
             } else {
-                targetRadius = minRadius + 50 + (Math.random() * (maxRadius - minRadius - 50));
+                // Scaled baseline duration up by 2x. Maintains the 1:2 frame ratio.
+                totalTicksForState = 60 + (Math.random() * 200);
             }
         }
+        
+        let progress = ticksInCurrentState / totalTicksForState;
+        
+        if (isFlaring) {
+            let ease = Math.sin(progress * Math.PI);
+            currentRadius = minRadius + (peakRadius - minRadius) * ease;
+        } else {
+            let gentleWobble = Math.sin(progress * Math.PI * 4);
+            currentRadius = minRadius + (5 * gentleWobble);
+        }
 
-        // 2. Smoothly ease the current radius toward the target radius
-        currentRadius += (targetRadius - currentRadius) * 0.05;
+        ticksInCurrentState++;
+    }
 
-        // 3. Calculate X and Y using polar to Cartesian conversion
+    function animate() {
+        drawBackground();
+        updateLogic();
+
+        // Polar to Cartesian conversion
         const x = centerX + currentRadius * Math.cos(angle);
         const y = centerY + currentRadius * Math.sin(angle);
 
-        // 4. Store in history
+        // Store path history
         pathHistory.push({ x, y, r: currentRadius });
         if (pathHistory.length > historyLength) {
-            pathHistory.shift(); // Remove oldest point to create a trail effect
+            pathHistory.shift(); 
         }
 
-        // 5. Draw the path with a gradient based on severity
+        // Draw the trailing path
         for (let i = 1; i < pathHistory.length; i++) {
             const p1 = pathHistory[i - 1];
             const p2 = pathHistory[i];
@@ -115,10 +166,8 @@
             ctx.moveTo(p1.x, p1.y);
             ctx.lineTo(p2.x, p2.y);
             
-            // Fade out the tail end of the line
             const opacity = i / pathHistory.length;
             
-            // Color based on severity (radius)
             ctx.strokeStyle = getColorForRadius(p2.r);
             ctx.globalAlpha = opacity;
             ctx.lineWidth = 4;
@@ -126,28 +175,24 @@
             ctx.stroke();
         }
         
-        ctx.globalAlpha = 1.0; // Reset alpha
+        ctx.globalAlpha = 1.0; 
 
-        // 6. Draw the leading "head" point
+        // Draw the leading head of the line
         if (pathHistory.length > 0) {
             const head = pathHistory[pathHistory.length - 1];
             ctx.beginPath();
             ctx.arc(head.x, head.y, 6, 0, Math.PI * 2);
             ctx.fillStyle = getColorForRadius(head.r);
             ctx.fill();
-            ctx.strokeStyle = '#fff';
+            ctx.strokeStyle = '#ffffff';
             ctx.lineWidth = 2;
             ctx.stroke();
         }
 
-        // Increment angle to sweep around the circle
         angle += angleStep;
-
-        // Loop the animation
         requestAnimationFrame(animate);
     }
 
-    // Start the animation
     animate();
 </script>
 
