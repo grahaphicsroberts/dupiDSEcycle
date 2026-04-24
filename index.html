@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cyclical Disease Activity: Slow Organic View</title>
+    <title>Cyclical Disease Activity: 2x Speed Time-Locked View</title>
     <style>
         body {
             display: flex;
@@ -36,22 +36,20 @@
     const minRadius = 40;  
     const maxRadius = 240; 
     
-    // Doubled history length to match the slower speed (keeps trail ~1 year long)
-    const historyLength = 840; 
+    // Time-based configurations (Doubled Speed)
+    const radiansPerSecond = 0.90; // Speed: Full circle takes ~7 seconds
+    const trailDurationMs = 7000;  // Trail lasts for exactly 7 seconds (~1 year)
     
-    // Animation & Time state
+    // State 
     let angle = -Math.PI / 2; 
-    
-    // Halved the speed again for a much slower, deliberate draw
-    const angleStep = 0.0075; 
-    
     let currentRadius = minRadius;
     let pathHistory = [];
+    let lastTime = 0; 
 
     // Organic State Machine
     let isFlaring = false;
-    let ticksInCurrentState = 0;
-    let totalTicksForState = 0;
+    let timeInCurrentState = 0;
+    let totalTimeForState = 0;
     let peakRadius = minRadius;
     
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -114,23 +112,32 @@
         return `hsl(${hue}, 100%, 50%)`;
     }
 
-    function updateLogic() {
-        if (ticksInCurrentState >= totalTicksForState) {
+    function animate(timestamp) {
+        if (!lastTime) lastTime = timestamp;
+        
+        const deltaTime = timestamp - lastTime;
+        lastTime = timestamp;
+
+        drawBackground();
+
+        // --- UPDATE LOGIC ---
+        timeInCurrentState += deltaTime;
+
+        if (timeInCurrentState >= totalTimeForState) {
             isFlaring = !isFlaring;
-            ticksInCurrentState = 0;
+            timeInCurrentState = 0;
             
             if (isFlaring) {
-                // Scaled durations up by 2x to match the halved speed. 
-                // This ensures flares take up the same physical width on the circle.
-                totalTicksForState = 30 + (Math.random() * 100);
+                // Halved duration to match 2x speed
+                totalTimeForState = 250 + (Math.random() * 800);
                 peakRadius = minRadius + 60 + (Math.random() * (maxRadius - minRadius - 60));
             } else {
-                // Scaled baseline duration up by 2x. Maintains the 1:2 frame ratio.
-                totalTicksForState = 60 + (Math.random() * 200);
+                // Halved duration to match 2x speed
+                totalTimeForState = 500 + (Math.random() * 1650);
             }
         }
         
-        let progress = ticksInCurrentState / totalTicksForState;
+        let progress = timeInCurrentState / totalTimeForState;
         
         if (isFlaring) {
             let ease = Math.sin(progress * Math.PI);
@@ -140,24 +147,19 @@
             currentRadius = minRadius + (5 * gentleWobble);
         }
 
-        ticksInCurrentState++;
-    }
+        // --- MOVEMENT & HISTORY ---
+        angle += radiansPerSecond * (deltaTime / 1000);
 
-    function animate() {
-        drawBackground();
-        updateLogic();
-
-        // Polar to Cartesian conversion
         const x = centerX + currentRadius * Math.cos(angle);
         const y = centerY + currentRadius * Math.sin(angle);
 
-        // Store path history
-        pathHistory.push({ x, y, r: currentRadius });
-        if (pathHistory.length > historyLength) {
+        pathHistory.push({ x, y, r: currentRadius, time: timestamp });
+        
+        while (pathHistory.length > 0 && timestamp - pathHistory[0].time > trailDurationMs) {
             pathHistory.shift(); 
         }
 
-        // Draw the trailing path
+        // --- DRAWING ---
         for (let i = 1; i < pathHistory.length; i++) {
             const p1 = pathHistory[i - 1];
             const p2 = pathHistory[i];
@@ -166,7 +168,8 @@
             ctx.moveTo(p1.x, p1.y);
             ctx.lineTo(p2.x, p2.y);
             
-            const opacity = i / pathHistory.length;
+            const ageMs = timestamp - p2.time;
+            const opacity = Math.max(0, 1.0 - (ageMs / trailDurationMs));
             
             ctx.strokeStyle = getColorForRadius(p2.r);
             ctx.globalAlpha = opacity;
@@ -177,7 +180,7 @@
         
         ctx.globalAlpha = 1.0; 
 
-        // Draw the leading head of the line
+        // Draw the leading head
         if (pathHistory.length > 0) {
             const head = pathHistory[pathHistory.length - 1];
             ctx.beginPath();
@@ -189,11 +192,10 @@
             ctx.stroke();
         }
 
-        angle += angleStep;
         requestAnimationFrame(animate);
     }
 
-    animate();
+    requestAnimationFrame(animate);
 </script>
 
 </body>
