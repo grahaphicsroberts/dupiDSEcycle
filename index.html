@@ -11,7 +11,7 @@
             align-items: center;
             height: 100vh;
             margin: 0;
-            background-color: #deefe7;
+            background-color: #DAF0E7;
             font-family: sans-serif;
         }
         canvas {
@@ -37,8 +37,8 @@
     const maxRadius = 240; 
     
     // Time-based configurations (Doubled Speed)
-    const radiansPerSecond = 0.90; // Speed: Full circle takes ~7 seconds
-    const trailDurationMs = 7000;  // Trail lasts for exactly 7 seconds (~1 year)
+    const radiansPerSecond = 0.90; 
+    const trailDurationMs = 7000;  
     
     // State 
     let angle = -Math.PI / 2; 
@@ -72,8 +72,9 @@
             ctx.lineWidth = 1;
             ctx.stroke();
             
-            ctx.fillStyle = '#ffffff'; 
-            ctx.font = '12px sans-serif';
+            // Updated text styling for better contrast and legibility
+            ctx.fillStyle = '#5c7a68'; 
+            ctx.font = '500 12px sans-serif'; 
             ctx.textAlign = 'center';
             ctx.fillText(zone.label, centerX, centerY - zone.r + 15);
         });
@@ -128,11 +129,9 @@
             timeInCurrentState = 0;
             
             if (isFlaring) {
-                // Halved duration to match 2x speed
                 totalTimeForState = 250 + (Math.random() * 800);
                 peakRadius = minRadius + 60 + (Math.random() * (maxRadius - minRadius - 60));
             } else {
-                // Halved duration to match 2x speed
                 totalTimeForState = 500 + (Math.random() * 1650);
             }
         }
