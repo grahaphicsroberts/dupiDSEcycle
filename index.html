@@ -68,11 +68,11 @@
         zones.forEach(zone => {
             ctx.beginPath();
             ctx.arc(centerX, centerY, zone.r, 0, Math.PI * 2);
-            ctx.strokeStyle = '#ffffff'; 
+            // Changed to #5c7a68 (label color) at 40% opacity
+            ctx.strokeStyle = 'rgba(92, 122, 104, 0.4)'; 
             ctx.lineWidth = 1;
             ctx.stroke();
             
-            // Updated text styling for better contrast and legibility
             ctx.fillStyle = '#5c7a68'; 
             ctx.font = '500 12px sans-serif'; 
             ctx.textAlign = 'center';
@@ -92,7 +92,7 @@
             
             ctx.fillText(months[i], x, y);
 
-            // Add small tick marks for the months
+            // Add small tick marks for the months, matching the ring color and opacity
             const tickStartX = centerX + maxRadius * Math.cos(monthAngle);
             const tickStartY = centerY + maxRadius * Math.sin(monthAngle);
             const tickEndX = centerX + (maxRadius + 10) * Math.cos(monthAngle);
@@ -101,7 +101,7 @@
             ctx.beginPath();
             ctx.moveTo(tickStartX, tickStartY);
             ctx.lineTo(tickEndX, tickEndY);
-            ctx.strokeStyle = '#ffffff';
+            ctx.strokeStyle = 'rgba(92, 122, 104, 0.4)';
             ctx.lineWidth = 2;
             ctx.stroke();
         }
