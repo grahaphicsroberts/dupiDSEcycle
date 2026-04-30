@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cyclical Disease Activity: 2x Speed Time-Locked View</title>
+    <title>Continuously Drawing Linear Chart with Gradient Fill</title>
     <style>
         body {
             display: flex;
@@ -11,183 +11,176 @@
             align-items: center;
             height: 100vh;
             margin: 0;
-            background-color: #DAF0E7;
+            background-color: white; /* Changed */
             font-family: sans-serif;
         }
         canvas {
             display: block;
+            /* Removed background-color to inherit from body */
         }
     </style>
 </head>
 <body>
 
-<canvas id="radialChart" width="650" height="650"></canvas>
+<canvas id="linearChart" width="800" height="400"></canvas>
 
 <script>
-    const canvas = document.getElementById('radialChart');
+    const canvas = document.getElementById('linearChart');
     const ctx = canvas.getContext('2d');
     
     const width = canvas.width;
     const height = canvas.height;
-    const centerX = width / 2;
-    const centerY = height / 2;
     
-    // Chart configurations
-    const minRadius = 40;  
-    const maxRadius = 240; 
+    // --- Chart Configurations ---
+    const padding = { top: 40, right: 60, bottom: 60, left: 60 };
+    const chartWidth = width - padding.left - padding.right;
+    const chartHeight = height - padding.top - padding.bottom;
     
-    // Time-based configurations (Doubled Speed)
-    const radiansPerSecond = 0.90; 
-    const trailDurationMs = 7000;  
-    
-    // State 
-    let angle = -Math.PI / 2; 
-    let currentRadius = minRadius;
+    // Y-Axis values
+    const minValue = 0;
+    const maxValue = 240; 
+
+    // Animation Configurations
+    const scrollSpeed = 40; // pixels per second
+
+    // --- State ---
     let pathHistory = [];
     let lastTime = 0; 
-
-    // Organic State Machine
+    
+    // --- Organic State Machine for Data Simulation ---
     let isFlaring = false;
     let timeInCurrentState = 0;
     let totalTimeForState = 0;
-    let peakRadius = minRadius;
+    let peakValue = minValue; 
+
+    // --- Helper Functions ---
     
-    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    function mapValueToY(value) {
+        const range = maxValue - minValue;
+        return padding.top + chartHeight - ((value - minValue) / range) * chartHeight;
+    }
 
-    function drawBackground() {
+    function drawAxisAndLabels() {
         ctx.clearRect(0, 0, width, height);
-        
-        const zones = [
-            { r: 240, label: 'Severe Flare' },
-            { r: 170, label: 'Moderate' },
-            { r: 100, label: 'Mild' },
-            { r: 40,  label: 'Baseline' }
-        ];
+        ctx.fillStyle = '#5c7a68';
+        ctx.strokeStyle = '#5c7a68';
+        ctx.lineWidth = 1;
+        ctx.font = '500 14px sans-serif';
 
-        // Draw structural rings
-        zones.forEach(zone => {
-            ctx.beginPath();
-            ctx.arc(centerX, centerY, zone.r, 0, Math.PI * 2);
-            // Changed to #5c7a68 (label color) at 40% opacity
-            ctx.strokeStyle = 'rgba(92, 122, 104, 0.4)'; 
-            ctx.lineWidth = 1;
-            ctx.stroke();
-            
-            ctx.fillStyle = '#5c7a68'; 
-            ctx.font = '500 12px sans-serif'; 
-            ctx.textAlign = 'center';
-            ctx.fillText(zone.label, centerX, centerY - zone.r + 15);
-        });
+        // Y-Axis Line
+        ctx.beginPath();
+        ctx.moveTo(padding.left, padding.top);
+        ctx.lineTo(padding.left, height - padding.bottom);
+        ctx.stroke();
 
-        // Draw Month Calendar Labels around the perimeter
-        ctx.fillStyle = '#7a9e8c'; 
-        ctx.font = 'bold 14px sans-serif';
-        ctx.textBaseline = 'middle';
-        
-        for (let i = 0; i < 12; i++) {
-            const monthAngle = (i / 12) * Math.PI * 2 - Math.PI / 2;
-            const labelRadius = maxRadius + 25;
-            const x = centerX + labelRadius * Math.cos(monthAngle);
-            const y = centerY + labelRadius * Math.sin(monthAngle);
-            
-            ctx.fillText(months[i], x, y);
+        // X-Axis Line
+        ctx.beginPath();
+        ctx.moveTo(padding.left, height - padding.bottom);
+        ctx.lineTo(width - padding.right, height - padding.bottom);
+        ctx.stroke();
 
-            // Add small tick marks for the months, matching the ring color and opacity
-            const tickStartX = centerX + maxRadius * Math.cos(monthAngle);
-            const tickStartY = centerY + maxRadius * Math.sin(monthAngle);
-            const tickEndX = centerX + (maxRadius + 10) * Math.cos(monthAngle);
-            const tickEndY = centerY + (maxRadius + 10) * Math.sin(monthAngle);
+        // Y-Axis Label
+        ctx.save();
+        // Adjusted translation for spacing
+        ctx.translate(padding.left - 35, height / 2);
+        ctx.rotate(-Math.PI / 2);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText('Disease Activity', 0, 0);
+        ctx.restore();
 
-            ctx.beginPath();
-            ctx.moveTo(tickStartX, tickStartY);
-            ctx.lineTo(tickEndX, tickEndY);
-            ctx.strokeStyle = 'rgba(92, 122, 104, 0.4)';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-        }
+        // X-Axis Label
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        // Adjusted y-position for spacing
+        ctx.fillText('Time', width / 2, height - padding.bottom + 20);
     }
 
-    function getColorForRadius(r) {
-        const normalized = Math.max(0, Math.min(1, (r - minRadius) / (maxRadius - minRadius)));
-        const hue = (1 - normalized) * 60; 
-        return `hsl(${hue}, 100%, 50%)`;
-    }
-
+    // --- Main Animation Loop ---
     function animate(timestamp) {
         if (!lastTime) lastTime = timestamp;
         
-        const deltaTime = timestamp - lastTime;
+        const deltaTime = (timestamp - lastTime) / 1000; // in seconds
         lastTime = timestamp;
 
-        drawBackground();
-
-        // --- UPDATE LOGIC ---
-        timeInCurrentState += deltaTime;
+        // --- 1. UPDATE DATA (Organic State Machine) ---
+        timeInCurrentState += deltaTime * 1000;
 
         if (timeInCurrentState >= totalTimeForState) {
             isFlaring = !isFlaring;
             timeInCurrentState = 0;
             
             if (isFlaring) {
-                totalTimeForState = 250 + (Math.random() * 800);
-                peakRadius = minRadius + 60 + (Math.random() * (maxRadius - minRadius - 60));
+                totalTimeForState = 1000 + (Math.random() * 3000); 
+                peakValue = 60 + (Math.random() * (maxValue - 60));
             } else {
-                totalTimeForState = 500 + (Math.random() * 1650);
+                totalTimeForState = 2000 + (Math.random() * 5000); 
             }
         }
         
+        let currentValue;
         let progress = timeInCurrentState / totalTimeForState;
         
         if (isFlaring) {
             let ease = Math.sin(progress * Math.PI);
-            currentRadius = minRadius + (peakRadius - minRadius) * ease;
+            currentValue = minValue + (peakValue - minValue) * ease;
         } else {
-            let gentleWobble = Math.sin(progress * Math.PI * 4);
-            currentRadius = minRadius + (5 * gentleWobble);
+            let gentleWobble = Math.sin(progress * Math.PI * 4) * 5;
+            currentValue = minValue + 20 + gentleWobble;
         }
+        currentValue = Math.max(minValue, currentValue);
 
-        // --- MOVEMENT & HISTORY ---
-        angle += radiansPerSecond * (deltaTime / 1000);
-
-        const x = centerX + currentRadius * Math.cos(angle);
-        const y = centerY + currentRadius * Math.sin(angle);
-
-        pathHistory.push({ x, y, r: currentRadius, time: timestamp });
+        // --- 2. UPDATE PATH HISTORY ---
+        const drawingHeadX = width - padding.right;
         
-        while (pathHistory.length > 0 && timestamp - pathHistory[0].time > trailDurationMs) {
-            pathHistory.shift(); 
+        const shiftAmount = scrollSpeed * deltaTime;
+        for (const point of pathHistory) {
+            point.x -= shiftAmount;
         }
 
-        // --- DRAWING ---
-        for (let i = 1; i < pathHistory.length; i++) {
-            const p1 = pathHistory[i - 1];
-            const p2 = pathHistory[i];
-            
+        const newY = mapValueToY(currentValue);
+        pathHistory.push({ x: drawingHeadX, y: newY, value: currentValue });
+        
+        pathHistory = pathHistory.filter(p => p.x > padding.left - 5);
+        
+        // --- 3. DRAW EVERYTHING ---
+        drawAxisAndLabels();
+        
+        if (pathHistory.length > 1) {
+            // Create the gradient for the fill
+            const fillGradient = ctx.createLinearGradient(0, height - padding.bottom, 0, padding.top);
+            fillGradient.addColorStop(0, 'rgba(255, 255, 0, 0.5)'); // Yellow at the bottom
+            fillGradient.addColorStop(0.75, 'rgba(255, 0, 0, 0.5)'); // Red towards the top
+            fillGradient.addColorStop(1, 'rgba(255, 0, 0, 0.6)');   // Darker Red at the very top
+
+            // Create the filled path under the curve
             ctx.beginPath();
-            ctx.moveTo(p1.x, p1.y);
-            ctx.lineTo(p2.x, p2.y);
-            
-            const ageMs = timestamp - p2.time;
-            const opacity = Math.max(0, 1.0 - (ageMs / trailDurationMs));
-            
-            ctx.strokeStyle = getColorForRadius(p2.r);
-            ctx.globalAlpha = opacity;
-            ctx.lineWidth = 4;
-            ctx.lineCap = 'round';
-            ctx.stroke();
-        }
-        
-        ctx.globalAlpha = 1.0; 
+            ctx.moveTo(pathHistory[0].x, height - padding.bottom); // Start at bottom-left of path
+            ctx.lineTo(pathHistory[0].x, pathHistory[0].y); // Move to the first data point
 
-        // Draw the leading head
-        if (pathHistory.length > 0) {
-            const head = pathHistory[pathHistory.length - 1];
+            for (let i = 1; i < pathHistory.length; i++) {
+                ctx.lineTo(pathHistory[i].x, pathHistory[i].y);
+            }
+
+            ctx.lineTo(pathHistory[pathHistory.length - 1].x, height - padding.bottom); // Line to bottom-right
+            ctx.closePath();
+            
+            ctx.fillStyle = fillGradient;
+            ctx.fill();
+        }
+
+        // Draw the leading "head" circle
+        const head = pathHistory[pathHistory.length - 1];
+        if (head) {
             ctx.beginPath();
             ctx.arc(head.x, head.y, 6, 0, Math.PI * 2);
-            ctx.fillStyle = getColorForRadius(head.r);
+            // Color the head based on value (Yellow to Red)
+            const normalized = Math.max(0, Math.min(1, (head.value - minValue) / (maxValue - minValue)));
+            const hue = (1 - normalized) * 60; 
+            ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
             ctx.fill();
-            ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#333333'; // Darker stroke for better visibility on white
+            ctx.lineWidth = 1.5;
             ctx.stroke();
         }
 
