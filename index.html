@@ -3,191 +3,221 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Continuously Drawing Linear Chart with Gradient Fill</title>
+    <title>Interactive Single-Draw Linear Chart</title>
     <style>
         body {
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
             height: 100vh;
             margin: 0;
-            background-color: white; /* Changed */
+            background-color: white;
             font-family: sans-serif;
+        }
+        #chart-container {
+            position: relative;
+            width: 800px;
+            height: 400px;
         }
         canvas {
             display: block;
-            /* Removed background-color to inherit from body */
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        #x-axis-label {
+            position: absolute;
+            bottom: 18px;
+            left: 50%; 
+            transform: translateX(-50%);
+            color: #5c7a68;
+            font: 500 14px sans-serif;
+        }
+        #y-axis-label {
+            position: absolute;
+            top: 200px; 
+            left: -10px;
+            transform: translateY(-50%) rotate(-90deg);
+            color: #5c7a68;
+            font: 500 14px sans-serif;
+            white-space: nowrap;
+        }
+        #info {
+            margin-top: 16px;
+            color: #555;
+            font-size: 16px;
+            font-weight: 500;
+            height: 20px;
+            text-align: center;
         }
     </style>
 </head>
 <body>
 
-<canvas id="linearChart" width="800" height="400"></canvas>
+<div id="chart-container">
+    <div id="y-axis-label">Disease Activity</div>
+    <canvas id="linearChart" width="800" height="400"></canvas>
+    <div id="x-axis-label">Time</div>
+</div>
+<div id="info"></div>
 
 <script>
     const canvas = document.getElementById('linearChart');
+    const chartContainer = document.getElementById('chart-container');
+    const infoEl = document.getElementById('info');
     const ctx = canvas.getContext('2d');
     
-    const width = canvas.width;
-    const height = canvas.height;
-    
-    // --- Chart Configurations ---
     const padding = { top: 40, right: 60, bottom: 60, left: 60 };
-    const chartWidth = width - padding.left - padding.right;
-    const chartHeight = height - padding.top - padding.bottom;
+    const chartWidth = canvas.width - padding.left - padding.right;
+    const chartHeight = canvas.height - padding.top - padding.bottom;
     
-    // Y-Axis values
     const minValue = 0;
     const maxValue = 240; 
+    const drawingSpeed = 6; 
 
-    // Animation Configurations
-    const scrollSpeed = 40; // pixels per second
+    let state = 'DRAWING_1';
+    let fullPath = [];
+    let currentPathIndex = 0;
+    let pauseIndex1 = -1;
+    let pauseIndex2 = -1;
+    let animationFrameId;
 
-    // --- State ---
-    let pathHistory = [];
-    let lastTime = 0; 
-    
-    // --- Organic State Machine for Data Simulation ---
-    let isFlaring = false;
-    let timeInCurrentState = 0;
-    let totalTimeForState = 0;
-    let peakValue = minValue; 
-
-    // --- Helper Functions ---
-    
     function mapValueToY(value) {
         const range = maxValue - minValue;
         return padding.top + chartHeight - ((value - minValue) / range) * chartHeight;
     }
+    
+    function generatePath() {
+        // Reverted to the original, smooth node structure
+        const nodes = [
+            { x: 0, val: 60 }, { x: 90, val: 210 }, { x: 180, val: 85 }, 
+            { x: 270, val: 235 }, // PAUSE 1 TARGET (Peak 2)
+            { x: 350, val: 70 }, { x: 440, val: 190 }, 
+            { x: 510, val: 95 }, // PAUSE 2 TARGET (Valley 3)
+            { x: 600, val: 220 }, { x: chartWidth, val: 80 },
+        ];
 
-    function drawAxisAndLabels() {
-        ctx.clearRect(0, 0, width, height);
-        ctx.fillStyle = '#5c7a68';
-        ctx.strokeStyle = '#5c7a68';
-        ctx.lineWidth = 1;
-        ctx.font = '500 14px sans-serif';
-
-        // Y-Axis Line
-        ctx.beginPath();
-        ctx.moveTo(padding.left, padding.top);
-        ctx.lineTo(padding.left, height - padding.bottom);
-        ctx.stroke();
-
-        // X-Axis Line
-        ctx.beginPath();
-        ctx.moveTo(padding.left, height - padding.bottom);
-        ctx.lineTo(width - padding.right, height - padding.bottom);
-        ctx.stroke();
-
-        // Y-Axis Label
-        ctx.save();
-        // Adjusted translation for spacing
-        ctx.translate(padding.left - 35, height / 2);
-        ctx.rotate(-Math.PI / 2);
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'bottom';
-        ctx.fillText('Disease Activity', 0, 0);
-        ctx.restore();
-
-        // X-Axis Label
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-        // Adjusted y-position for spacing
-        ctx.fillText('Time', width / 2, height - padding.bottom + 20);
+        let path = [];
+        for (let i = 0; i < nodes.length - 1; i++) {
+            const startNode = nodes[i];
+            const endNode = nodes[i+1];
+            
+            const segmentDx = endNode.x - startNode.x;
+            const segmentDy = endNode.val - startNode.val;
+            
+            for (let j = 0; j <= segmentDx; j++) {
+                const progress = j / segmentDx;
+                const easedProgress = 0.5 - 0.5 * Math.cos(progress * Math.PI);
+                path.push({
+                    x: padding.left + startNode.x + j,
+                    y: mapValueToY(startNode.val + (segmentDy * easedProgress)),
+                    value: startNode.val + (segmentDy * easedProgress)
+                });
+            }
+        }
+        
+        // Find the exact index for the pause points after the path is generated
+        pauseIndex1 = path.findIndex(p => p.x === padding.left + 270);
+        pauseIndex2 = path.findIndex(p => p.x === padding.left + 510);
+        
+        return path;
     }
 
-    // --- Main Animation Loop ---
-    function animate(timestamp) {
-        if (!lastTime) lastTime = timestamp;
-        
-        const deltaTime = (timestamp - lastTime) / 1000; // in seconds
-        lastTime = timestamp;
+    function drawAxisLines() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = '#5c7a68';
+        ctx.lineWidth = 1;
 
-        // --- 1. UPDATE DATA (Organic State Machine) ---
-        timeInCurrentState += deltaTime * 1000;
+        ctx.beginPath(); ctx.moveTo(padding.left, padding.top); ctx.lineTo(padding.left, canvas.height - padding.bottom); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(canvas.width - padding.right, padding.top); ctx.lineTo(canvas.width - padding.right, canvas.height - padding.bottom); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(padding.left, canvas.height - padding.bottom); ctx.lineTo(canvas.width - padding.right, canvas.height - padding.bottom); ctx.stroke();
 
-        if (timeInCurrentState >= totalTimeForState) {
-            isFlaring = !isFlaring;
-            timeInCurrentState = 0;
-            
-            if (isFlaring) {
-                totalTimeForState = 1000 + (Math.random() * 3000); 
-                peakValue = 60 + (Math.random() * (maxValue - 60));
+        const tickLength = 10;
+        const yBase = canvas.height - padding.bottom;
+        [0.25, 0.5, 0.75].forEach(pos => {
+            const x = padding.left + chartWidth * pos;
+            ctx.beginPath(); ctx.moveTo(x, yBase); ctx.lineTo(x, yBase - tickLength); ctx.stroke();
+        });
+    }
+    
+    function animate() {
+        if (state.startsWith('DRAWING')) {
+            let targetIndex;
+            if (state === 'DRAWING_1') targetIndex = pauseIndex1;
+            else if (state === 'DRAWING_2') targetIndex = pauseIndex2;
+            else targetIndex = fullPath.length - 1;
+
+            if (currentPathIndex < targetIndex) {
+                currentPathIndex = Math.min(currentPathIndex + drawingSpeed, targetIndex);
+                draw(currentPathIndex);
             } else {
-                totalTimeForState = 2000 + (Math.random() * 5000); 
+                if (state === 'DRAWING_1') {
+                    state = 'PAUSED_1';
+                    infoEl.textContent = 'Click to continue';
+                    chartContainer.style.cursor = 'pointer';
+                } else if (state === 'DRAWING_2') {
+                    state = 'PAUSED_2';
+                    infoEl.textContent = 'Click to finish';
+                    chartContainer.style.cursor = 'pointer';
+                } else {
+                    state = 'DONE';
+                    infoEl.textContent = 'Animation complete';
+                    chartContainer.style.cursor = 'default';
+                    cancelAnimationFrame(animationFrameId); // Stop the loop
+                }
             }
         }
-        
-        let currentValue;
-        let progress = timeInCurrentState / totalTimeForState;
-        
-        if (isFlaring) {
-            let ease = Math.sin(progress * Math.PI);
-            currentValue = minValue + (peakValue - minValue) * ease;
-        } else {
-            let gentleWobble = Math.sin(progress * Math.PI * 4) * 5;
-            currentValue = minValue + 20 + gentleWobble;
+        if(state !== 'DONE') {
+            animationFrameId = requestAnimationFrame(animate);
         }
-        currentValue = Math.max(minValue, currentValue);
+    }
 
-        // --- 2. UPDATE PATH HISTORY ---
-        const drawingHeadX = width - padding.right;
-        
-        const shiftAmount = scrollSpeed * deltaTime;
-        for (const point of pathHistory) {
-            point.x -= shiftAmount;
-        }
+    function draw(pathIndex) {
+        drawAxisLines();
+        const pathSegment = fullPath.slice(0, pathIndex + 1);
 
-        const newY = mapValueToY(currentValue);
-        pathHistory.push({ x: drawingHeadX, y: newY, value: currentValue });
-        
-        pathHistory = pathHistory.filter(p => p.x > padding.left - 5);
-        
-        // --- 3. DRAW EVERYTHING ---
-        drawAxisAndLabels();
-        
-        if (pathHistory.length > 1) {
-            // Create the gradient for the fill
-            const fillGradient = ctx.createLinearGradient(0, height - padding.bottom, 0, padding.top);
-            fillGradient.addColorStop(0, 'rgba(255, 255, 0, 0.5)'); // Yellow at the bottom
-            fillGradient.addColorStop(0.75, 'rgba(255, 0, 0, 0.5)'); // Red towards the top
-            fillGradient.addColorStop(1, 'rgba(255, 0, 0, 0.6)');   // Darker Red at the very top
+        if (pathSegment.length > 1) {
+            const fillGradient = ctx.createLinearGradient(0, canvas.height - padding.bottom, 0, padding.top);
+            fillGradient.addColorStop(0, 'rgba(255, 255, 255, 0)');    
+            fillGradient.addColorStop(0.2, 'rgba(255, 255, 0, 0.4)'); 
+            fillGradient.addColorStop(0.75, 'rgba(255, 0, 0, 0.5)'); 
+            fillGradient.addColorStop(1, 'rgba(255, 0, 0, 0.6)');    
 
-            // Create the filled path under the curve
             ctx.beginPath();
-            ctx.moveTo(pathHistory[0].x, height - padding.bottom); // Start at bottom-left of path
-            ctx.lineTo(pathHistory[0].x, pathHistory[0].y); // Move to the first data point
-
-            for (let i = 1; i < pathHistory.length; i++) {
-                ctx.lineTo(pathHistory[i].x, pathHistory[i].y);
-            }
-
-            ctx.lineTo(pathHistory[pathHistory.length - 1].x, height - padding.bottom); // Line to bottom-right
+            ctx.moveTo(pathSegment[0].x, canvas.height - padding.bottom); 
+            pathSegment.forEach(point => ctx.lineTo(point.x, point.y));
+            ctx.lineTo(pathSegment[pathSegment.length - 1].x, canvas.height - padding.bottom); 
             ctx.closePath();
-            
             ctx.fillStyle = fillGradient;
             ctx.fill();
         }
 
-        // Draw the leading "head" circle
-        const head = pathHistory[pathHistory.length - 1];
+        const head = pathSegment[pathSegment.length - 1];
         if (head) {
-            ctx.beginPath();
-            ctx.arc(head.x, head.y, 6, 0, Math.PI * 2);
-            // Color the head based on value (Yellow to Red)
+            ctx.beginPath(); ctx.arc(head.x, head.y, 6, 0, Math.PI * 2);
             const normalized = Math.max(0, Math.min(1, (head.value - minValue) / (maxValue - minValue)));
-            const hue = (1 - normalized) * 60; 
-            ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
+            ctx.fillStyle = `hsl(${(1 - normalized) * 60}, 100%, 50%)`;
             ctx.fill();
-            ctx.strokeStyle = '#333333'; // Darker stroke for better visibility on white
-            ctx.lineWidth = 1.5;
-            ctx.stroke();
+            ctx.strokeStyle = '#333333'; ctx.lineWidth = 1.5; ctx.stroke();
         }
-
-        requestAnimationFrame(animate);
     }
 
-    requestAnimationFrame(animate);
+    chartContainer.addEventListener('click', () => {
+        if (state === 'PAUSED_1') {
+            state = 'DRAWING_2';
+            infoEl.textContent = '';
+            chartContainer.style.cursor = 'default';
+        } else if (state === 'PAUSED_2') {
+            state = 'DRAWING_3';
+            infoEl.textContent = '';
+            chartContainer.style.cursor = 'default';
+        }
+    });
+
+    fullPath = generatePath();
+    animate(); 
+
 </script>
 
 </body>
