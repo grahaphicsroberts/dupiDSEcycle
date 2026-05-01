@@ -12,7 +12,7 @@
             align-items: center;
             height: 100vh;
             margin: 0;
-            background-color: white;
+            background-color: #DAF0E7;
             font-family: sans-serif;
         }
         #chart-container {
@@ -62,7 +62,6 @@
             border-radius: 8px;
             border: 1px solid rgba(255, 255, 255, 0.2);
             text-align: center;
-            /* Set a fixed width to prevent text from re-wrapping */
             width: 200px;
             pointer-events: none;
             transform: translate(-50%, -120%);
@@ -138,15 +137,30 @@
     }
 
     function drawAxisLines() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // This function now only draws lines, no clearing.
         ctx.strokeStyle = '#5c7a68'; ctx.lineWidth = 1;
+
+        // --- AXES ---
         ctx.beginPath(); ctx.moveTo(padding.left, padding.top); ctx.lineTo(padding.left, canvas.height - padding.bottom); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(canvas.width - padding.right, padding.top); ctx.lineTo(canvas.width - padding.right, canvas.height - padding.bottom); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(padding.left, canvas.height - padding.bottom); ctx.lineTo(canvas.width - padding.right, canvas.height - padding.bottom); ctx.stroke();
+
+        // --- ARROWS ---
+        const arrowSize = 5;
+        const arrowY = padding.top;
+        // Left Arrow
+        let arrowX = padding.left;
+        ctx.beginPath(); ctx.moveTo(arrowX, arrowY); ctx.lineTo(arrowX - arrowSize, arrowY + arrowSize); ctx.moveTo(arrowX, arrowY); ctx.lineTo(arrowX + arrowSize, arrowY + arrowSize); ctx.stroke();
+        // Right Arrow
+        arrowX = canvas.width - padding.right;
+        ctx.beginPath(); ctx.moveTo(arrowX, arrowY); ctx.lineTo(arrowX - arrowSize, arrowY + arrowSize); ctx.moveTo(arrowX, arrowY); ctx.lineTo(arrowX + arrowSize, arrowY + arrowSize); ctx.stroke();
+        
+        // --- TICKS ---
+        const tickLength = 15; // Ticks are taller
         const yBase = canvas.height - padding.bottom;
         [0.25, 0.5, 0.75].forEach(pos => {
             const x = padding.left + chartWidth * pos;
-            ctx.beginPath(); ctx.moveTo(x, yBase); ctx.lineTo(x, yBase - 10); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(x, yBase); ctx.lineTo(x, yBase - tickLength); ctx.stroke(); // Draw upwards
         });
     }
     
@@ -175,12 +189,15 @@
     }
 
     function draw(pathIndex) {
-        drawAxisLines();
+        // New rendering order
+        ctx.clearRect(0, 0, canvas.width, canvas.height); // 1. Clear canvas
+
         const pathSegment = fullPath.slice(0, pathIndex + 1);
 
+        // 2. Draw gradient fill
         if (pathSegment.length > 1) {
             const fillGradient = ctx.createLinearGradient(0, canvas.height - padding.bottom, 0, padding.top);
-            fillGradient.addColorStop(0, 'rgba(255, 255, 255, 0)');    
+            fillGradient.addColorStop(0, '#DAF0E7'); 
             fillGradient.addColorStop(0.2, 'rgba(255, 255, 0, 0.4)'); 
             fillGradient.addColorStop(0.75, 'rgba(255, 0, 0, 0.5)'); 
             fillGradient.addColorStop(1, 'rgba(255, 0, 0, 0.6)');    
@@ -193,6 +210,10 @@
             ctx.fillStyle = fillGradient; ctx.fill();
         }
 
+        // 3. Draw axes and ticks ON TOP of the gradient
+        drawAxisLines();
+
+        // 4. Draw the head circle ON TOP of everything
         const head = pathSegment[pathSegment.length - 1];
         if (head) {
             ctx.beginPath(); ctx.arc(head.x, head.y, 6, 0, Math.PI * 2);
